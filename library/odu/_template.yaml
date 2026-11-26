@@ -1,0 +1,14 @@
+# Mẫu khai báo model dàn nóng. File bắt đầu bằng "_" KHÔNG được nạp.
+# Sao chép sang file mới (ví dụ daikin.yaml), điền số liệu THẬT từ datasheet.
+# 'source' bắt buộc: ghi rõ datasheet/tài liệu và trang nào.
+models:
+  - model_id: "TÊN-MODEL"
+    vendor: "Hãng"
+    width_m: 0.0        # m, mặt rộng
+    depth_m: 0.0        # m, bề dày theo hướng hút-thổi
+    height_m: 0.0       # m
+    airflow_m3_h: 0     # m3/h, lưu lượng gió qua dàn
+    cooling_kw: 0.0     # kW, công suất lạnh danh định
+    compressor_kw: 0.0  # kW, công suất điện máy nén
+    intake_limit_c: 0.0 # °C, giới hạn nhiệt độ hút cho phép của hãng
+    source: "Datasheet XYZ, trang N"

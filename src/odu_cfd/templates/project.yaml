@@ -1,0 +1,27 @@
+# Cấu hình dự án ODU-CFD. Sửa các giá trị theo dự án rồi chạy: odu-cfd validate <thư-mục-dự-án>
+project:
+  name: __NAME__
+  description: ""
+
+climate:
+  design_temp_c: 35.0      # °C, nhiệt độ thiết kế (theo TCVN 5687 / QCVN 02 hoặc yêu cầu hãng)
+  wind:
+    ref_height_m: 10.0     # m, độ cao đo vận tốc gió tham chiếu
+    speeds_ms: [0, 2.6]    # m/s; 0 = lặng gió (chạy transient)
+    directions_deg: [0, 90, 180, 270]   # hướng gió thổi TỪ, 0 = Bắc, 90 = Đông
+    terrain_category: III  # I..V
+
+building:
+  num_floors: 19
+  floor_height_m: 3.3
+
+odu:
+  model_id: TÊN-MODEL-TRONG-THƯ-VIỆN
+  load_fraction: 0.8            # tải vận hành
+  simultaneity_fraction: 0.8    # tỷ lệ dàn hoạt động đồng thời
+  louver_open_fraction: 0.8     # độ hở louver
+
+compute:
+  backend: local         # local | wsl | cloud
+  cores: 4
+  confidence: screening  # screening | official
