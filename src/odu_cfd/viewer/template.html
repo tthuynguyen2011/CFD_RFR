@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #eef1f5; font-family: "Segoe UI", Arial, sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #panel { position: fixed; top: 12px; left: 12px; background: rgba(255,255,255,0.92); border: 1px solid #c9d0da;
+           border-radius: 6px; padding: 10px 14px; font-size: 14px; color: #1f2933; box-shadow: 0 1px 4px rgba(0,0,0,0.15); }
+  #panel h1 { font-size: 15px; margin: 0 0 6px 0; }
+  #panel label { display: block; margin: 3px 0; cursor: pointer; }
+  #panel .hint { margin-top: 8px; font-size: 12px; color: #52606d; }
+  #err { color: #b00020; font-size: 13px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h1>__TITLE__</h1>
+  <div id="groups"></div>
+  <div class="hint">Chuột trái: xoay, chuột phải: dịch, lăn chuột: phóng</div>
+  <div id="err"></div>
+</div>
+<script>__THREE__</script>
+<script>__GLTF_LOADER__</script>
+<script>__ORBIT__</script>
+<script>
+const GLB_B64 = "__GLB_B64__";
+(function () {
+  function fail(msg) { document.getElementById("err").textContent = msg; }
+  try {
+    const bin = atob(GLB_B64);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xeef1f5);
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 5000);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+    sun.position.set(60, 120, 80);
+    scene.add(sun);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    new THREE.GLTFLoader().parse(buf.buffer, "", function (gltf) {
+      const byGroup = {};
+      gltf.scene.traverse(function (o) {
+        if (!o.isMesh) return;
+        let g = o.userData.group;
+        if (!g && o.parent) g = o.parent.userData.group;
+        g = g || "khác";
+        (byGroup[g] = byGroup[g] || []).push(o);
+        if (g === "odu") {
+          o.material = new THREE.MeshStandardMaterial({ color: 0xe6591a, roughness: 0.6, metalness: 0.1 });
+        }
+      });
+      scene.add(gltf.scene);
+
+      const box = new THREE.Box3().setFromObject(gltf.scene);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const radius = Math.max(size.x, size.y, size.z, 1);
+
+      const grid = new THREE.GridHelper(Math.ceil(radius * 2), 20, 0x888888, 0xcccccc);
+      grid.position.set(center.x, box.min.y, center.z);
+      scene.add(grid);
+      scene.add(new THREE.AxesHelper(Math.max(radius * 0.3, 1)));
+
+      controls.target.copy(center);
+      camera.position.set(center.x + radius * 1.2, center.y + radius * 0.9, center.z + radius * 1.5);
+      camera.near = radius / 1000;
+      camera.far = radius * 50;
+      camera.updateProjectionMatrix();
+      controls.update();
+
+      const holder = document.getElementById("groups");
+      Object.keys(byGroup).forEach(function (g) {
+        const label = document.createElement("label");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = true;
+        cb.addEventListener("change", function () {
+          byGroup[g].forEach(function (m) { m.visible = cb.checked; });
+        });
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(" " + g + " (" + byGroup[g].length + ")"));
+        holder.appendChild(label);
+      });
+      document.title = document.title + " [" + Object.keys(byGroup).length + " nhóm]";
+    }, function (e) { fail("Không đọc được scene.glb: " + e); });
+
+    window.addEventListener("resize", function () {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    (function loop() {
+      requestAnimationFrame(loop);
+      controls.update();
+      renderer.render(scene, camera);
+    })();
+  } catch (e) {
+    fail("Lỗi viewer: " + e);
+  }
+})();
+</script>
+</body>
+</html>

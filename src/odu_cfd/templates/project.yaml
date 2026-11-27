@@ -25,3 +25,12 @@ compute:
   backend: local         # local | wsl | cloud
   cores: 4
   confidence: screening  # screening | official
+
+# Tùy chọn: kích thước dựng hình học 3D (giá trị mặc định như dưới đây)
+# geometry:
+#   slab_thickness_m: 0.15       # m, độ dày sàn ban công
+#   rail_height_m: 1.1           # m, chiều cao lan can tính từ mặt sàn ban công
+#   rail_thickness_m: 0.05       # m, độ dày lan can
+#   odu_default_height_m: 1.0    # m, chiều cao dàn nóng khi không có thư viện ODU
+#   odu_default_width_m: 1.0     # m, bề rộng chân đế dàn nóng khi không có thư viện ODU (<= 5)
+#   odu_default_depth_m: 0.4     # m, bề sâu chân đế dàn nóng khi không có thư viện ODU (<= 5)

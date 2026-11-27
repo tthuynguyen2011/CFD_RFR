@@ -7,7 +7,7 @@ name = "odu-cfd"
 version = "0.1.0"
 description = "Tự động đánh giá nhiệt độ ban công đặt dàn nóng bằng CFD"
 requires-python = ">=3.10"
-dependencies = ["PyYAML>=6.0"]
+dependencies = ["PyYAML>=6.0", "ezdxf>=1.1", "numpy>=1.26", "shapely>=2.1", "matplotlib>=3.8"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
@@ -19,7 +19,7 @@ odu-cfd = "odu_cfd.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-odu_cfd = ["templates/*.yaml"]
+odu_cfd = ["templates/*.yaml", "viewer/*.html", "viewer/vendor/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

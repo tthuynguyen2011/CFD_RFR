@@ -7,3 +7,5 @@ projects/*/results/
 projects/*/input/
 projects/*/report/
 projects/*/scenarios.json
+scratch/
+third_party/

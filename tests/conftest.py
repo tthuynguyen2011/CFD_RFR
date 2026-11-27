@@ -27,3 +27,12 @@ VALID = {
 @pytest.fixture
 def valid_dict():
     return copy.deepcopy(VALID)
+
+
+@pytest.fixture
+def tower_dxf(tmp_path):
+    from dxf_factory import make_tower_dxf
+
+    p = tmp_path / "tower.dxf"
+    make_tower_dxf(p)
+    return p

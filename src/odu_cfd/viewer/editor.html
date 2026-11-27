@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trình chỉnh bố trí dàn nóng</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #eef1f5; color: #1f2933;
+               font: 13px "Segoe UI", Arial, sans-serif; }
+  #app { display: flex; height: 100%; }
+  #viewport { position: relative; flex: 1 1 auto; min-width: 0; background: #e4e9f0; }
+  #viewport canvas { display: block; width: 100%; height: 100%; }
+  #topbar { position: absolute; top: 8px; left: 8px; display: flex; gap: 6px; align-items: center;
+            background: rgba(255,255,255,0.92); border: 1px solid #c9d0da; border-radius: 6px; padding: 5px 8px; }
+  #legend { position: absolute; bottom: 8px; left: 8px; background: rgba(255,255,255,0.92); border: 1px solid #c9d0da;
+            border-radius: 6px; padding: 5px 8px; font-size: 12px; }
+  #legend span.sw { display: inline-block; width: 11px; height: 11px; margin: 0 4px 0 8px; vertical-align: -1px;
+                    border: 1px solid #555; }
+  #legend span.sw:first-child { margin-left: 0; }
+  #nowebgl { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #b00020; display: none;
+             background: #fff; padding: 12px 16px; border: 1px solid #b00020; border-radius: 6px; }
+  #side { flex: 0 0 340px; box-sizing: border-box; overflow-y: auto; background: #fff; border-left: 1px solid #c9d0da;
+          padding: 10px 12px; }
+  #side h1 { font-size: 15px; margin: 0 0 2px 0; }
+  #side h2 { font-size: 13px; margin: 12px 0 4px 0; padding-top: 6px; border-top: 1px solid #e3e7ec; }
+  #side .row { display: flex; gap: 6px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
+  #side label { white-space: nowrap; }
+  #side input[type=text], #side input[type=number], #side select { box-sizing: border-box; padding: 3px 5px;
+          border: 1px solid #aab4c0; border-radius: 4px; font: inherit; }
+  #side input[type=number] { width: 78px; }
+  button { font: inherit; padding: 3px 9px; border: 1px solid #8795a6; border-radius: 4px; background: #f4f6f9; cursor: pointer; }
+  button:hover:not(:disabled) { background: #e6ebf2; }
+  button:disabled { opacity: 0.45; cursor: default; }
+  button.on { background: #cfe3ff; border-color: #3b6fb6; }
+  #dirty { font-weight: 600; }
+  #dirty.unsaved { color: #b00020; }
+  #dirty.saved { color: #1b7a3d; }
+  #notice { display: none; margin: 8px 0; padding: 6px 8px; border: 1px solid #d9a400; background: #fff7d6; border-radius: 4px; }
+  #notice .btns { margin-top: 5px; display: flex; gap: 6px; }
+  #oduList { max-height: 150px; overflow-y: auto; border: 1px solid #d5dbe3; border-radius: 4px; }
+  #oduList div { padding: 2px 6px; cursor: pointer; }
+  #oduList div.sel { background: #fff0a8; }
+  #oduList div.bad { color: #b00020; }
+  #problems { max-height: 220px; overflow-y: auto; }
+  #problems div { padding: 3px 6px; margin: 2px 0; border-left: 4px solid #aaa; background: #f6f8fa; cursor: default; }
+  #problems div.error { border-left-color: #c62828; background: #fdecec; }
+  #problems div.warning { border-left-color: #d9a400; background: #fff7d6; }
+  #problems div.ok { border-left-color: #1b7a3d; background: #eaf6ee; }
+  #status { margin-top: 8px; color: #52606d; font-size: 12px; min-height: 1.4em; }
+  #selftest { display: none; }
+  .hint { color: #52606d; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="viewport">
+    <div id="topbar">
+      <button id="btn3d" class="on" title="Nhìn 3D (chuột trái xoay, phải dịch, lăn phóng)">3D</button>
+      <button id="btnPlan" title="Mặt bằng nhìn từ trên xuống (trực giao, kéo nền để dịch, lăn để phóng)">Mặt bằng</button>
+      <label><input type="checkbox" id="clipFloor"> Cắt nhà theo tầng đang chỉnh</label>
+    </div>
+    <div id="legend">
+      <span class="sw" style="background:#2e9e5b"></span>ban công cho phép
+      <span class="sw" style="background:#8a8f98"></span>không cho phép
+      <span class="sw" style="background:#e6591a"></span>dàn nóng
+      <span class="sw" style="background:#ffd400"></span>đang chọn
+      <span class="sw" style="background:#d32f2f"></span>vi phạm
+      <span class="sw" style="background:#0a2f6b"></span>hướng thổi
+    </div>
+    <div id="nowebgl">Trình duyệt không bật được WebGL; vẫn chỉnh được bằng ô nhập số và danh sách.</div>
+  </div>
+  <div id="side">
+    <h1>Trình chỉnh bố trí dàn nóng</h1>
+    <div class="hint" id="projectName"></div>
+
+    <h2>Phương án</h2>
+    <div class="row"><label for="layoutSelect">Phương án</label><select id="layoutSelect"></select>
+      <span id="dirty"></span></div>
+    <div class="row"><label for="floorsInput">Tầng áp dụng</label><input type="text" id="floorsInput" size="18"
+      title="Ví dụ 4-19,22-23 (tầng 1 có sàn ở cao độ 0)"></div>
+    <div class="row"><label for="editFloor">Tầng đang chỉnh</label><select id="editFloor"></select></div>
+    <div id="notice"></div>
+    <div class="row">
+      <button id="btnSave" title="Ctrl+S">Lưu</button>
+      <input type="text" id="saveAsName" size="14" placeholder="tên phương án mới" maxlength="64">
+      <button id="btnSaveAs">Lưu thành phương án mới</button>
+    </div>
+
+    <h2>Dàn nóng</h2>
+    <div class="row">
+      <button id="btnAdd" title="Thêm ở tâm ban công đang chọn">Thêm</button>
+      <button id="btnDup">Nhân bản</button>
+      <button id="btnDel" title="Delete">Xóa</button>
+      <button id="btnUndo" title="Ctrl+Z">Hoàn tác</button>
+      <button id="btnRedo" title="Ctrl+Y">Làm lại</button>
+    </div>
+    <div id="oduList"></div>
+    <div class="row">
+      <label>x <input type="number" id="fX" step="0.01"></label>
+      <label>y <input type="number" id="fY" step="0.01"></label>
+    </div>
+    <div class="row">
+      <label>xoay <input type="number" id="fRot" step="1"></label>
+      <label>hướng thổi <input type="number" id="fFront" step="1"></label>
+    </div>
+    <div class="row">
+      <button id="btnRotM90">-90</button><button id="btnRotM15" title="Shift+R">-15</button>
+      <button id="btnRotP15" title="R">+15</button><button id="btnRotP90">+90</button>
+      <span class="hint" id="oduInfo"></span>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="snapGrid" checked> bắt dính lưới 0,05 m</label>
+      <label><input type="checkbox" id="snapAng" checked> góc 15&deg;</label>
+    </div>
+    <div class="hint">Kéo hộp để di chuyển; R / Shift+R xoay &plusmn;15&deg;; Delete xóa; Ctrl+Z / Ctrl+Y hoàn tác / làm lại; Ctrl+S lưu.
+      Hướng thổi = xoay + 90&deg; (mặt thổi là trục cục bộ +y).</div>
+
+    <h2>Ban công</h2>
+    <div class="row"><span id="balInfo" class="hint">Bấm vào ban công trên hình để chọn.</span></div>
+    <div class="row"><button id="btnToggleBal">Bật/tắt cho phép đặt dàn nóng</button></div>
+
+    <h2>Vấn đề</h2>
+    <div id="problems"></div>
+    <div id="status"></div>
+  </div>
+</div>
+<pre id="selftest"></pre>
+<script>__THREE__</script>
+<script>__GLTF_LOADER__</script>
+<script>__ORBIT__</script>
+<script>
+(function () {
+"use strict";
+const TOKEN = __TOKEN__;
+const PARAMS = new URLSearchParams(window.location.search);
+
+// ============================================================ tiện ích
+function rd(v, n) { const f = Math.pow(10, n === undefined ? 6 : n); const r = Math.round(v * f) / f; return r === 0 ? 0 : r; }
+function normAngle(a) { let r = a % 360; if (r <= -180) r += 360; if (r > 180) r -= 360; return rd(r, 6); }
+function frontAngle(rot) { return rd((((rot + 90) % 360) + 360) % 360, 6); }
+function rad(d) { return d * Math.PI / 180; }
+
+// "4-19,22-23" -> [4..19,22,23]; null nếu sai cú pháp (kiểm tra thật nằm ở server)
+function parseFloorsLoose(text) {
+  if (typeof text !== "string" || !text.trim()) return null;
+  const out = [], seen = {};
+  const parts = text.split(",");
+  for (let i = 0; i < parts.length; i++) {
+    const seg = parts[i].trim();
+    const m = /^(\d+)\s*(?:-\s*(\d+))?$/.exec(seg);
+    if (!m) return null;
+    const lo = parseInt(m[1], 10), hi = m[2] === undefined ? lo : parseInt(m[2], 10);
+    if (lo < 1 || hi < lo || hi > 1000) return null;
+    for (let f = lo; f <= hi; f++) { if (seen[f]) return null; seen[f] = true; out.push(f); }
+  }
+  return out;
+}
+
+// ============================================================ LÕI (không phụ thuộc DOM)
+const Core = (function () {
+  const S = {
+    project: "", layout: null, layoutExists: false, layouts: [], balconies: [], plan: null, models: [],
+    projectModelId: null, defaults: { width_m: 1.0, depth_m: 0.4, height_m: 1.0 },
+    numFloors: 1, floorHeight: 3.3, slab: 0.15, floor: 1,
+    selected: null, selectedBalcony: null, dirty: false,
+    snapGrid: true, snapAng: true, gridStep: 0.05, angStep: 15,
+    problems: [], sizes: {}, heights: {}, message: "", validating: false,
+  };
+  let undoStack = [], redoStack = [], listeners = [], valSeq = 0, savedSnap = "";
+
+  function on(fn) { listeners.push(fn); }
+  function emit(kind) { listeners.slice().forEach(function (f) { try { f(kind || "change"); } catch (e) { console.error(e); } }); }
+  function docSnap() { return JSON.stringify({ odus: S.layout.odus, floors: S.layout.floors }); }
+  function histSnap() { return JSON.stringify({ odus: S.layout.odus, floors: S.layout.floors, selected: S.selected }); }
+  function updateDirty() { S.dirty = docSnap() !== savedSnap; }
+  function pushHistory() { undoStack.push(histSnap()); if (undoStack.length > 300) undoStack.shift(); redoStack = []; }
+  function find(id) { for (let i = 0; i < S.layout.odus.length; i++) if (S.layout.odus[i].id === id) return S.layout.odus[i]; return null; }
+  function findBalcony(id) { for (let i = 0; i < S.balconies.length; i++) if (S.balconies[i].id === id) return S.balconies[i]; return null; }
+  function floorsOf(o) {
+    const t = (o && o.floors) ? o.floors : S.layout.floors;
+    return parseFloorsLoose(t) || [];
+  }
+  function layoutFloors() { return parseFloorsLoose(S.layout.floors) || []; }
+  function fixEditFloor() {
+    const fl = layoutFloors();
+    if (fl.length && fl.indexOf(S.floor) < 0) S.floor = fl[0];
+  }
+  // tầng mà hộp của dàn nóng được vẽ "chính" (chỉnh được)
+  function activeFloor(o) {
+    const fl = floorsOf(o);
+    if (fl.indexOf(S.floor) >= 0 || !fl.length) return S.floor;
+    return fl[0];
+  }
+  function oduSize(o) {
+    const s = S.sizes[o.id];
+    if (s) return s;
+    if (o.size) return o.size;
+    const mid = o.model_id || S.projectModelId;
+    for (let i = 0; i < S.models.length; i++) if (S.models[i].model_id === mid) return [S.models[i].width_m, S.models[i].depth_m];
+    return [S.defaults.width_m, S.defaults.depth_m];
+  }
+  function oduHeight(o) {
+    const h = S.heights[o.id];
+    if (typeof h === "number") return h;
+    const mid = o.model_id || S.projectModelId;
+    for (let i = 0; i < S.models.length; i++) if (S.models[i].model_id === mid) return S.models[i].height_m;
+    return S.defaults.height_m;
+  }
+
+  function snapPoint(x, y) {
+    if (!S.snapGrid) return { x: x, y: y };
+    const g = S.gridStep;
+    return { x: rd(Math.round(x / g) * g, 6), y: rd(Math.round(y / g) * g, 6) };
+  }
+  function snapAngle(a) {
+    if (!S.snapAng) return normAngle(a);
+    return normAngle(Math.round(a / S.angStep) * S.angStep);
+  }
+
+  function nextId() {
+    let mx = 0;
+    S.layout.odus.forEach(function (o) { const m = /^ODU-(\d+)$/.exec(o.id); if (m) mx = Math.max(mx, parseInt(m[1], 10)); });
+    let n = mx + 1, id;
+    do { id = "ODU-" + String(n).padStart(2, "0"); n++; } while (find(id));
+    return id;
+  }
+  function centroid(poly) {
+    let a = 0, cx = 0, cy = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i], q = poly[(i + 1) % poly.length];
+      const c = p[0] * q[1] - q[0] * p[1];
+      a += c; cx += (p[0] + q[0]) * c; cy += (p[1] + q[1]) * c;
+    }
+    if (Math.abs(a) < 1e-12) {
+      let sx = 0, sy = 0; poly.forEach(function (p) { sx += p[0]; sy += p[1]; });
+      return [sx / poly.length, sy / poly.length];
+    }
+    return [cx / (3 * a), cy / (3 * a)];
+  }
+
+  // ---- thao tác chỉnh sửa
+  function select(id) { S.selected = (id && find(id)) ? id : null; if (S.selected) S.selectedBalcony = null; emit("select"); }
+  function selectBalcony(id) { S.selectedBalcony = (id && findBalcony(id)) ? id : null; if (S.selectedBalcony) S.selected = null; emit("select"); }
+  function addOdu(balconyId) {
+    let b = balconyId ? findBalcony(balconyId) : (S.selectedBalcony ? findBalcony(S.selectedBalcony) : null);
+    if (!b) b = S.balconies.filter(function (x) { return x.allowed; })[0] || null;
+    if (!b) { S.message = "Không có ban công nào cho phép đặt dàn nóng."; emit("message"); return null; }
+    pushHistory();
+    const c = centroid(b.polygon);
+    const o = { id: nextId(), x: rd(c[0], 4), y: rd(c[1], 4), rotation_deg: 0, model_id: null, size: null, floors: null };
+    S.layout.odus.push(o);
+    S.selected = o.id; S.selectedBalcony = null;
+    updateDirty(); emit("change");
+    return o;
+  }
+  function beginEdit() { pushHistory(); }
+  function moveOdu(id, x, y, opts) {
+    const o = find(id); if (!o) return null;
+    opts = opts || {};
+    if (!opts.gesture) pushHistory();
+    const p = opts.exact ? { x: x, y: y } : snapPoint(x, y);
+    o.x = p.x; o.y = p.y;
+    updateDirty(); emit(opts.gesture ? "moving" : "change");
+    return o;
+  }
+  function rotateOdu(id, delta) {
+    const o = find(id); if (!o) return null;
+    pushHistory();
+    o.rotation_deg = snapAngle(o.rotation_deg + delta);
+    updateDirty(); emit("change");
+    return o;
+  }
+  function setOdu(id, patch) {
+    const o = find(id); if (!o) return null;
+    pushHistory();
+    ["x", "y"].forEach(function (k) { if (typeof patch[k] === "number" && isFinite(patch[k])) o[k] = rd(patch[k], 6); });
+    if (typeof patch.rotation_deg === "number" && isFinite(patch.rotation_deg)) o.rotation_deg = normAngle(patch.rotation_deg);
+    updateDirty(); emit("change");
+    return o;
+  }
+  function deleteOdu(id) {
+    const i = S.layout.odus.findIndex(function (o) { return o.id === id; });
+    if (i < 0) return false;
+    pushHistory();
+    S.layout.odus.splice(i, 1);
+    if (S.selected === id) S.selected = null;
+    updateDirty(); emit("change");
+    return true;
+  }
+  function duplicateOdu(id) {
+    const o = find(id); if (!o) return null;
+    pushHistory();
+    const c = JSON.parse(JSON.stringify(o));
+    c.id = nextId(); c.x = rd(o.x + 0.3, 6);
+    S.layout.odus.push(c);
+    S.selected = c.id;
+    updateDirty(); emit("change");
+    return c;
+  }
+  function setFloors(text) {
+    if (text === S.layout.floors) return;
+    pushHistory();
+    S.layout.floors = text;
+    fixEditFloor();
+    updateDirty(); emit("change");
+  }
+  function setFloor(f) { S.floor = f; emit("floor"); }
+  function setOptions(o) {
+    if (typeof o.snapGrid === "boolean") S.snapGrid = o.snapGrid;
+    if (typeof o.snapAng === "boolean") S.snapAng = o.snapAng;
+    emit("options");
+  }
+  function applyHistory(str) {
+    const d = JSON.parse(str);
+    S.layout.odus = d.odus; S.layout.floors = d.floors;
+    S.selected = (d.selected && find(d.selected)) ? d.selected : null;
+    fixEditFloor(); updateDirty();
+  }
+  function undo() {
+    if (!undoStack.length) return false;
+    redoStack.push(histSnap());
+    applyHistory(undoStack.pop());
+    emit("change"); return true;
+  }
+  function redo() {
+    if (!redoStack.length) return false;
+    undoStack.push(histSnap());
+    applyHistory(redoStack.pop());
+    emit("change"); return true;
+  }
+  function canUndo() { return undoStack.length > 0; }
+  function canRedo() { return redoStack.length > 0; }
+
+  // ---- gọi server
+  function api(method, path, body) {
+    const opt = { method: method, headers: {} };
+    if (method === "POST") {
+      opt.headers["X-Token"] = TOKEN;
+      opt.headers["Content-Type"] = "application/json";
+      opt.body = JSON.stringify(body);
+    }
+    return fetch(path, opt).then(function (r) {
+      return r.json().catch(function () { return null; }).then(function (data) { return { status: r.status, ok: r.ok, data: data }; });
+    });
+  }
+  function errText(r) { return (r && r.data && r.data.error) || ("lỗi HTTP " + (r ? r.status : "?")); }
+
+  function applyState(st) {
+    S.project = st.project; S.layout = st.layout; S.layoutExists = st.layout_exists; S.layouts = st.layouts;
+    S.balconies = st.balconies; S.plan = st.plan; S.models = st.models; S.projectModelId = st.project_model_id;
+    S.defaults = st.defaults; S.numFloors = st.num_floors; S.floorHeight = st.floor_height_m; S.slab = st.slab_thickness_m;
+    S.selected = null; S.selectedBalcony = null; S.problems = []; S.sizes = {}; S.heights = {};
+    undoStack = []; redoStack = [];
+    fixEditFloor();
+    savedSnap = docSnap(); S.dirty = false;
+  }
+  function loadState() {
+    return api("GET", "/api/state").then(function (r) {
+      if (!r.ok) throw new Error(errText(r));
+      applyState(r.data);
+      emit("loaded");
+      return S;
+    });
+  }
+  function loadLayout(name) {
+    return api("GET", "/api/layout?name=" + encodeURIComponent(name)).then(function (r) {
+      if (!r.ok) { S.message = "Không mở được phương án: " + errText(r); emit("message"); return { ok: false }; }
+      S.layout = r.data; S.layoutExists = true;
+      S.selected = null; S.selectedBalcony = null; S.problems = []; S.sizes = {}; S.heights = {};
+      undoStack = []; redoStack = [];
+      fixEditFloor(); savedSnap = docSnap(); S.dirty = false;
+      emit("loaded");
+      return { ok: true };
+    });
+  }
+  function validate() {
+    const seq = ++valSeq;
+    S.validating = true; emit("validating");
+    return api("POST", "/api/validate", { layout: S.layout }).then(function (r) {
+      if (seq !== valSeq) return { problems: S.problems, sizes: S.sizes, stale: true };
+      S.validating = false;
+      if (r.ok) { S.problems = r.data.problems; S.sizes = r.data.sizes || {}; S.heights = r.data.heights || {}; }
+      else S.problems = [{ level: "error", odu_id: null, message: "Kiểm tra thất bại: " + errText(r) }];
+      emit("validated");
+      return { problems: S.problems, sizes: S.sizes };
+    }, function (e) {
+      S.validating = false;
+      S.problems = [{ level: "error", odu_id: null, message: "Không gọi được server: " + e }];
+      emit("validated");
+      return { problems: S.problems, sizes: S.sizes };
+    });
+  }
+  function save(name, opts) {
+    opts = opts || {};
+    const body = { layout: S.layout };
+    if (name !== undefined && name !== null) { body.name = name; if (opts.overwrite) body.overwrite = true; }
+    return api("POST", "/api/save", body).then(function (r) {
+      if (r.ok) {
+        const saved = r.data.name;
+        S.layout.name = saved; S.layouts = r.data.layouts; S.layoutExists = true;
+        savedSnap = docSnap(); S.dirty = false;
+        S.problems = r.data.problems;
+        emit("saved");
+        return { ok: true, status: r.status, name: saved, problems: r.data.problems };
+      }
+      if (r.status === 422) {
+        S.problems = r.data.problems; emit("validated");
+        return { ok: false, status: 422, problems: r.data.problems, error: r.data.error };
+      }
+      return { ok: false, status: r.status, error: errText(r) };
+    }, function (e) { return { ok: false, status: 0, error: String(e) }; });
+  }
+  function toggleBalcony(id) {
+    const b = findBalcony(id);
+    if (!b) return Promise.resolve({ ok: false, error: "không có ban công " + id });
+    const body = b.allowed ? { denied: [id] } : { allowed: [id] };
+    return api("POST", "/api/balconies", body).then(function (r) {
+      if (!r.ok) { S.message = "Không đổi được ban công: " + errText(r); emit("message"); return { ok: false, error: errText(r) }; }
+      S.balconies = r.data.balconies;
+      emit("balconies");
+      return validate().then(function () { return { ok: true, allowed: findBalcony(id).allowed }; });
+    });
+  }
+
+  return {
+    state: S, on: on, emit: emit, find: find, findBalcony: findBalcony, floorsOf: floorsOf, layoutFloors: layoutFloors,
+    activeFloor: activeFloor, oduSize: oduSize, oduHeight: oduHeight, snapPoint: snapPoint, snapAngle: snapAngle,
+    select: select, selectBalcony: selectBalcony, addOdu: addOdu, beginEdit: beginEdit, moveOdu: moveOdu,
+    rotateOdu: rotateOdu, setOdu: setOdu, deleteOdu: deleteOdu, duplicateOdu: duplicateOdu, setFloors: setFloors,
+    setFloor: setFloor, setOptions: setOptions, undo: undo, redo: redo, canUndo: canUndo, canRedo: canRedo,
+    loadState: loadState, loadLayout: loadLayout, validate: validate, save: save, toggleBalcony: toggleBalcony,
+    isUnsaved: function () { return S.dirty || !S.layoutExists; },
+  };
+})();
+
+window.EditorAPI = {
+  state: Core.state,
+  addOdu: Core.addOdu, moveOdu: Core.moveOdu, rotateOdu: Core.rotateOdu, setOdu: Core.setOdu,
+  deleteOdu: Core.deleteOdu, duplicateOdu: Core.duplicateOdu, undo: Core.undo, redo: Core.redo,
+  snapPoint: Core.snapPoint, snapAngle: Core.snapAngle, validate: Core.validate, save: Core.save,
+  toggleBalcony: Core.toggleBalcony, select: Core.select, loadLayout: Core.loadLayout,
+  // hướng thổi hiện trên màn hình của mũi tên dàn nóng `id` ở chế độ hiện tại (xem View.arrowDirection)
+  arrowScreenDirection: function (id) { return View.arrowDirection(id); },
+  _core: Core,
+};
+
+// ============================================================ HIỂN THỊ 3D
+const View = (function () {
+  const V = { ok: false, mode: "3d", glb: "chưa nạp", stats: function () { return {}; } };
+  let renderer, scene, persp, ortho, controls, container, dyn, glbRoot = null;
+  let raycaster, needRender = true, planCenter = { x: 0, z: 0 }, ppw = 10, bounds = null, clipPlane;
+  let active = {}, oduPickMeshes = [], balPickMeshes = [], disposables = [], geoCache = {};
+  let drag = null, pan = null, downInfo = null;
+  const COL = { normal: 0xe6591a, sel: 0xffd400, err: 0xd32f2f, edge: 0x333333, arrow: 0x0a2f6b };
+  let matFade, matArrow;
+
+  function size() { return { w: Math.max(1, container.clientWidth), h: Math.max(1, container.clientHeight) }; }
+  function request() { needRender = true; }
+
+  function init(el) {
+    container = el;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+    } catch (e) {
+      document.getElementById("nowebgl").style.display = "block";
+      return false;
+    }
+    V.ok = true;
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.setClearColor(0xe4e9f0, 1);
+    container.insertBefore(renderer.domElement, container.firstChild);
+    scene = new THREE.Scene();
+    scene.add(new THREE.AmbientLight(0xffffff, 0.75));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.6);
+    sun.position.set(60, 120, 80); scene.add(sun);
+    persp = new THREE.PerspectiveCamera(45, 1, 0.1, 5000);
+    ortho = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 2000);
+    ortho.up.set(0, 0, -1);
+    controls = new THREE.OrbitControls(persp, renderer.domElement);
+    controls.addEventListener("change", request);
+    raycaster = new THREE.Raycaster();
+    clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 100);
+    matFade = new THREE.MeshBasicMaterial({ color: COL.normal, transparent: true, opacity: 0.16, depthWrite: false });
+    matArrow = new THREE.MeshBasicMaterial({ color: COL.arrow, side: THREE.DoubleSide });
+    dyn = new THREE.Group(); scene.add(dyn);
+
+    const dom = renderer.domElement;
+    container.addEventListener("pointerdown", onDown, true);
+    dom.addEventListener("pointermove", onMove);
+    dom.addEventListener("pointerup", onUp);
+    dom.addEventListener("pointercancel", onUp);
+    dom.addEventListener("wheel", onWheel, { passive: false });
+    dom.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+    window.addEventListener("resize", resize);
+    resize();
+    (function loop() { requestAnimationFrame(loop); if (needRender) { needRender = false; renderFrame(); } })();
+    return true;
+  }
+
+  function cam() { return V.mode === "plan" ? ortho : persp; }
+  function renderFrame() {
+    if (V.mode === "plan") updateOrtho();
+    renderer.render(scene, cam());
+  }
+  function resize() {
+    if (!V.ok) return;
+    const s = size();
+    renderer.setSize(s.w, s.h, false);
+    persp.aspect = s.w / s.h; persp.updateProjectionMatrix();
+    request();
+  }
+  function updateOrtho() {
+    const s = size();
+    ortho.left = -s.w / (2 * ppw); ortho.right = s.w / (2 * ppw);
+    ortho.top = s.h / (2 * ppw); ortho.bottom = -s.h / (2 * ppw);
+    ortho.position.set(planCenter.x, 400, planCenter.z);
+    ortho.lookAt(planCenter.x, 0, planCenter.z);
+    ortho.updateProjectionMatrix();
+  }
+
+  function computeBounds() {
+    const S = Core.state;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    function add(p) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+    ((S.plan && S.plan.envelope) || []).forEach(function (e) { e.exterior.forEach(add); });
+    S.balconies.forEach(function (b) { b.polygon.forEach(add); });
+    if (!isFinite(x0)) { x0 = 0; y0 = 0; x1 = 10; y1 = 10; }
+    bounds = { x0: x0, y0: y0, x1: x1, y1: y1, h: S.numFloors * S.floorHeight };
+  }
+  function fitCameras() {
+    computeBounds();
+    const s = size(), b = bounds;
+    const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+    const bw = Math.max(b.x1 - b.x0, 1), bh = Math.max(b.y1 - b.y0, 1);
+    planCenter = { x: cx, z: -cy };
+    ppw = Math.min(s.w / (bw * 1.25), s.h / (bh * 1.25));
+    const r = Math.max(bw, bh, b.h);
+    controls.target.set(cx, b.h / 2, -cy);
+    persp.position.set(cx + r * 0.9, b.h * 0.75 + r * 0.2, -cy + r * 1.3);
+    persp.near = Math.max(r / 1000, 0.05); persp.far = r * 40;
+    persp.updateProjectionMatrix(); controls.update();
+    request();
+  }
+  // đưa camera 3D về tầng đang chỉnh: nhìn vào các ban công từ phía ngoài nhà
+  function focusFloor() {
+    if (!V.ok || !bounds) return;
+    const S = Core.state, ft = (S.floor - 1) * S.floorHeight + S.slab;
+    const bcx = (bounds.x0 + bounds.x1) / 2, bcy = (bounds.y0 + bounds.y1) / 2;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    S.balconies.forEach(function (b) { b.polygon.forEach(function (p) {
+      x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }); });
+    if (!isFinite(x0)) { x0 = bounds.x0; x1 = bounds.x1; y0 = bounds.y0; y1 = bounds.y1; }
+    const tx = (x0 + x1) / 2, ty = (y0 + y1) / 2;
+    let dx = tx - bcx, dy = ty - bcy;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) { dx = 0; dy = -1; } else { dx /= len; dy /= len; }
+    const dist = Math.max(14, 1.7 * Math.max(x1 - x0, y1 - y0, 6));
+    controls.target.set(tx, ft, -ty);
+    persp.position.set(tx + dx * dist * 0.8 + dy * dist * 0.35, ft + dist * 0.65, -(ty + dy * dist * 0.8 - dx * dist * 0.35));
+    persp.far = Math.max(persp.far, dist * 40);
+    persp.updateProjectionMatrix(); controls.update();
+    request();
+  }
+
+  function loadGlb() {
+    return fetch("/scene.glb").then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.arrayBuffer();
+    }).then(function (buf) {
+      return new Promise(function (resolve, reject) {
+        new THREE.GLTFLoader().parse(buf, "", function (gltf) {
+          glbRoot = gltf.scene; scene.add(glbRoot);
+          V.glb = "đã nạp"; request(); resolve();
+        }, function (e) { reject(e); });
+      });
+    }).catch(function (e) { V.glb = "lỗi: " + e; });
+  }
+
+  // ---- dựng lại phần động
+  function disposeDyn() {
+    while (dyn.children.length) dyn.remove(dyn.children[0]);
+    disposables.forEach(function (d) { if (d.dispose) d.dispose(); });
+    disposables = []; geoCache = {};
+    active = {}; oduPickMeshes = []; balPickMeshes = [];
+  }
+  function track(x) { disposables.push(x); return x; }
+  function shapeOf(ring, holes) {
+    const sh = new THREE.Shape(ring.map(function (p) { return new THREE.Vector2(p[0], p[1]); }));
+    (holes || []).forEach(function (h) { sh.holes.push(new THREE.Path(h.map(function (p) { return new THREE.Vector2(p[0], p[1]); }))); });
+    return sh;
+  }
+  function labelSprite(text, x, y, z) {
+    const c = document.createElement("canvas"); c.width = 128; c.height = 64;
+    const g = c.getContext("2d");
+    g.fillStyle = "rgba(255,255,255,0.8)"; g.fillRect(0, 12, 128, 40);
+    g.fillStyle = "#0b3d1e"; g.font = "bold 34px Segoe UI, Arial"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.fillText(text, 64, 33);
+    const tex = track(new THREE.CanvasTexture(c));
+    const mat = track(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+    const sp = new THREE.Sprite(mat);
+    sp.scale.set(1.3, 0.65, 1); sp.position.set(x, y, z); sp.renderOrder = 10;
+    return sp;
+  }
+  function boxGeo(w, h, d) {
+    const k = w + "|" + h + "|" + d;
+    if (!geoCache[k]) {
+      const g = track(new THREE.BoxGeometry(w, h, d));
+      geoCache[k] = { box: g, edges: track(new THREE.EdgesGeometry(g)) };
+    }
+    return geoCache[k];
+  }
+  function arrowGeo(d) {
+    const k = "arrow|" + d;
+    if (!geoCache[k]) {
+      const L = d / 2 + 0.28;
+      const sh = new THREE.Shape();
+      sh.moveTo(-0.03, 0); sh.lineTo(0.03, 0); sh.lineTo(0.03, L); sh.lineTo(0.12, L);
+      sh.lineTo(0, L + 0.25); sh.lineTo(-0.12, L); sh.lineTo(-0.03, L); sh.lineTo(-0.03, 0);
+      const g = track(new THREE.ShapeGeometry(sh));
+      g.rotateX(-Math.PI / 2); // (x, y) -> (x, 0, -y): +y local = mặt thổi = -z của three
+      geoCache[k] = g;
+    }
+    return geoCache[k];
+  }
+  function applyTransform(o, g) {
+    const S = Core.state, h = Core.oduHeight(o), f = Core.activeFloor(o);
+    g.position.set(o.x, (f - 1) * S.floorHeight + S.slab + h / 2, -o.y);
+    g.rotation.y = rad(o.rotation_deg);
+  }
+  function errorIds() {
+    const m = {};
+    Core.state.problems.forEach(function (p) { if (p.level === "error" && p.odu_id) m[p.odu_id] = true; });
+    return m;
+  }
+  function applyColors() {
+    const S = Core.state, errs = errorIds();
+    Object.keys(active).forEach(function (id) {
+      const a = active[id], sel = S.selected === id, bad = !!errs[id];
+      a.mat.color.setHex(sel ? COL.sel : (bad ? COL.err : COL.normal));
+      a.edgeMat.color.setHex(bad ? COL.err : COL.edge);
+    });
+    request();
+  }
+
+  function rebuild() {
+    if (!V.ok) return;
+    const S = Core.state;
+    if (!S.plan) return;
+    disposeDyn();
+    const fh = S.floorHeight, slab = S.slab;
+    const ft = (S.floor - 1) * fh + slab;
+    const clip = document.getElementById("clipFloor").checked || V.mode === "plan";
+    let maxH = 0.5;
+    S.layout.odus.forEach(function (o) { maxH = Math.max(maxH, Core.oduHeight(o)); });
+    clipPlane.constant = ft + maxH + 0.25;
+    renderer.clippingPlanes = clip ? [clipPlane] : [];
+
+    if (clip) { // mặt cắt thân nhà để nhìn rõ từ trên xuống
+      ((S.plan.envelope) || []).forEach(function (e) {
+        const g = track(new THREE.ShapeGeometry(shapeOf(e.exterior, e.holes)));
+        const m = track(new THREE.MeshBasicMaterial({ color: 0xb9bec6, side: THREE.DoubleSide }));
+        const mesh = new THREE.Mesh(g, m); mesh.rotation.x = -Math.PI / 2; mesh.position.y = ft - 0.01;
+        dyn.add(mesh);
+      });
+    }
+    S.balconies.forEach(function (b) {
+      const sel = S.selectedBalcony === b.id;
+      const g = track(new THREE.ShapeGeometry(shapeOf(b.polygon)));
+      const m = track(new THREE.MeshBasicMaterial({
+        color: b.allowed ? 0x2e9e5b : 0x8a8f98, transparent: true, opacity: sel ? 0.8 : 0.5,
+        side: THREE.DoubleSide, depthWrite: false,
+      }));
+      const mesh = new THREE.Mesh(g, m);
+      mesh.rotation.x = -Math.PI / 2; mesh.position.y = ft + 0.02; mesh.userData.balconyId = b.id;
+      dyn.add(mesh); balPickMeshes.push(mesh);
+      const pts = b.polygon.map(function (p) { return new THREE.Vector3(p[0], ft + 0.03, -p[1]); });
+      const lg = track(new THREE.BufferGeometry().setFromPoints(pts));
+      const line = new THREE.LineLoop(lg, track(new THREE.LineBasicMaterial({ color: sel ? 0xffa000 : 0x1c6b3e })));
+      dyn.add(line);
+      let minx = Infinity, miny = Infinity;
+      b.polygon.forEach(function (p) { minx = Math.min(minx, p[0]); miny = Math.min(miny, p[1]); });
+      dyn.add(labelSprite(b.id, minx + 0.7, ft + 0.05, -(miny + 0.35)));
+    });
+
+    let fadedCount = 0;
+    S.layout.odus.forEach(function (o) {
+      const af = Core.activeFloor(o), h = Core.oduHeight(o), sz = Core.oduSize(o), geo = boxGeo(sz[0], h, sz[1]);
+      Core.floorsOf(o).forEach(function (f) {
+        if (f === af || fadedCount > 4000) return;
+        fadedCount++;
+        const fm = new THREE.Mesh(geo.box, matFade);
+        fm.position.set(o.x, (f - 1) * fh + slab + h / 2, -o.y); fm.rotation.y = rad(o.rotation_deg);
+        dyn.add(fm);
+      });
+      const g = new THREE.Group();
+      const mat = track(new THREE.MeshStandardMaterial({ color: COL.normal, roughness: 0.6, metalness: 0.1 }));
+      const edgeMat = track(new THREE.LineBasicMaterial({ color: COL.edge }));
+      const mesh = new THREE.Mesh(geo.box, mat); mesh.userData.oduId = o.id;
+      g.add(mesh);
+      g.add(new THREE.LineSegments(geo.edges, edgeMat));
+      const arrow = new THREE.Mesh(arrowGeo(sz[1]), matArrow); arrow.position.y = h / 2 + 0.01;
+      g.add(arrow);
+      applyTransform(o, g);
+      dyn.add(g);
+      active[o.id] = { group: g, mesh: mesh, mat: mat, edgeMat: edgeMat };
+      oduPickMeshes.push(mesh);
+    });
+    applyColors();
+  }
+  function moveActive(id) {
+    const a = active[id], o = Core.find(id);
+    if (a && o) { applyTransform(o, a.group); request(); }
+  }
+
+  // ---- chuột
+  function ndc(ev) {
+    const r = renderer.domElement.getBoundingClientRect();
+    return new THREE.Vector2(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  }
+  function setRay(ev) {
+    if (V.mode === "plan") updateOrtho();
+    scene.updateMatrixWorld(true); // các hộp vừa dựng lại chưa qua lần render nào
+    cam().updateMatrixWorld(true);
+    raycaster.setFromCamera(ndc(ev), cam());
+  }
+  function planeHit(ev, y) {
+    setRay(ev);
+    const p = new THREE.Vector3();
+    return raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -y), p) ? p : null;
+  }
+  function pickOdu(ev) {
+    setRay(ev);
+    const hits = raycaster.intersectObjects(oduPickMeshes, false);
+    return hits.length ? hits[0].object.userData.oduId : null;
+  }
+  function pickBalcony(ev) {
+    setRay(ev);
+    const hits = raycaster.intersectObjects(balPickMeshes, false);
+    return hits.length ? hits[0].object.userData.balconyId : null;
+  }
+  function onDown(ev) {
+    if (!V.ok || ev.target !== renderer.domElement) return;
+    downInfo = { x: ev.clientX, y: ev.clientY, moved: false, hitOdu: null };
+    if (ev.button === 0) {
+      const id = pickOdu(ev);
+      if (id) {
+        downInfo.hitOdu = id;
+        Core.select(id);
+        const o = Core.find(id), S = Core.state;
+        const y = (Core.activeFloor(o) - 1) * S.floorHeight + S.slab;
+        const p = planeHit(ev, y);
+        if (p) {
+          drag = { id: id, y: y, dx: o.x - p.x, dy: o.y - (-p.z), started: false };
+          controls.enabled = false;
+          try { renderer.domElement.setPointerCapture(ev.pointerId); } catch (e) { /* bỏ qua */ }
+          ev.stopPropagation();
+          return;
+        }
+      }
+    }
+    if (V.mode === "plan") {
+      pan = { x: ev.clientX, y: ev.clientY };
+      try { renderer.domElement.setPointerCapture(ev.pointerId); } catch (e) { /* bỏ qua */ }
+      ev.stopPropagation();
+    }
+  }
+  function onMove(ev) {
+    if (downInfo && Math.hypot(ev.clientX - downInfo.x, ev.clientY - downInfo.y) > 4) downInfo.moved = true;
+    if (drag) {
+      const p = planeHit(ev, drag.y);
+      if (!p) return;
+      if (!drag.started) { drag.started = true; Core.beginEdit(); }
+      Core.moveOdu(drag.id, p.x + drag.dx, -p.z + drag.dy, { gesture: true });
+    } else if (pan) {
+      const dx = ev.clientX - pan.x, dy = ev.clientY - pan.y;
+      pan.x = ev.clientX; pan.y = ev.clientY;
+      planCenter.x -= dx / ppw; planCenter.z -= dy / ppw;
+      request();
+    }
+  }
+  function onUp(ev) {
+    const wasDrag = drag;
+    if (drag) {
+      try { renderer.domElement.releasePointerCapture(ev.pointerId); } catch (e) { /* bỏ qua */ }
+      controls.enabled = true; drag = null;
+      if (wasDrag.started) Core.emit("change");
+    }
+    if (pan) { pan = null; }
+    if (downInfo && !downInfo.moved && !downInfo.hitOdu && ev.button === 0) {
+      const b = pickBalcony(ev);
+      if (b) Core.selectBalcony(b); else { Core.select(null); Core.selectBalcony(null); }
+    }
+    downInfo = null;
+  }
+  function onWheel(ev) {
+    if (V.mode !== "plan") return;
+    ev.preventDefault();
+    const s = size(), r = renderer.domElement.getBoundingClientRect();
+    const px = ev.clientX - r.left, py = ev.clientY - r.top;
+    const wx = planCenter.x + (px - s.w / 2) / ppw, wz = planCenter.z + (py - s.h / 2) / ppw;
+    ppw = Math.min(Math.max(ppw * (ev.deltaY < 0 ? 1.15 : 1 / 1.15), 0.5), 2000);
+    planCenter.x = wx - (px - s.w / 2) / ppw; planCenter.z = wz - (py - s.h / 2) / ppw;
+    request();
+  }
+
+  function setMode(m) {
+    V.mode = m === "plan" ? "plan" : "3d";
+    controls.enabled = V.mode === "3d";
+    document.getElementById("btn3d").classList.toggle("on", V.mode === "3d");
+    document.getElementById("btnPlan").classList.toggle("on", V.mode === "plan");
+    rebuild(); request();
+  }
+
+  V.init = init; V.loadGlb = loadGlb; V.rebuild = rebuild; V.moveActive = moveActive; V.applyColors = applyColors;
+  V.fit = fitCameras; V.focusFloor = focusFloor; V.setMode = setMode; V.request = request; V.resize = resize;
+  // toạ độ màn hình (client) của điểm mô hình (x, y, z); dùng cho tự kiểm
+  V.screenPos = function (x, y, z) {
+    if (V.mode === "plan") updateOrtho();
+    cam().updateMatrixWorld(true);
+    const v = new THREE.Vector3(x, z, -y).project(cam());
+    const r = renderer.domElement.getBoundingClientRect();
+    return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
+  };
+  // phát sự kiện con trỏ tổng hợp lên canvas (không phải chuột thật; chỉ để chạy qua cùng bộ xử lý)
+  V.synth = function (type, x, y) {
+    renderer.domElement.dispatchEvent(new PointerEvent(type, {
+      clientX: x, clientY: y, button: 0, buttons: type === "pointerup" ? 0 : 1, pointerId: 1, bubbles: true, cancelable: true }));
+  };
+  // hướng thổi THẤY ĐƯỢC của mũi tên 3D (đuôi -> đầu mũi tên) của một dàn nóng, tính từ chính lưới đang vẽ:
+  // world = (dx, dy) theo hệ mặt bằng (x phải, y lên); screen = (dx, dy lên màn hình) qua camera hiện tại.
+  V.arrowDirection = function (id) {
+    const a = active[id];
+    if (!V.ok || !a) return null;
+    const arrow = a.group.children.filter(function (c) { return c.isMesh && c !== a.mesh; })[0];
+    if (!arrow) return null;
+    scene.updateMatrixWorld(true);
+    if (V.mode === "plan") updateOrtho();
+    cam().updateMatrixWorld(true);
+    const pos = arrow.geometry.attributes.position;
+    let tip = null, tail = null, dmax = -1, dmin = Infinity;
+    for (let i = 0; i < pos.count; i++) {
+      const v = new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i));
+      const d = Math.hypot(v.x, v.z);
+      if (d > dmax) { dmax = d; tip = v.clone(); }
+      if (d < dmin) { dmin = d; tail = v.clone(); }
+    }
+    const wt = arrow.localToWorld(tip), wl = arrow.localToWorld(tail);
+    const st = wt.clone().project(cam()), sl = wl.clone().project(cam());
+    const r = renderer.domElement.getBoundingClientRect();
+    return {
+      world: [wt.x - wl.x, -(wt.z - wl.z)],
+      screen: [(st.x - sl.x) / 2 * r.width, (st.y - sl.y) / 2 * r.height],
+    };
+  };
+  V.stats = function () {
+    return {
+      webgl: V.ok, mode: V.mode, glb: V.glb, ppw: ppw, size: V.ok ? size() : null, plan_center: planCenter, odu_meshes: oduPickMeshes.length, balcony_overlays: balPickMeshes.length,
+      scene_children: V.ok ? scene.children.length : 0, dyn_children: V.ok ? dyn.children.length : 0,
+      glb_meshes: (function () { let n = 0; if (glbRoot) glbRoot.traverse(function (o) { if (o.isMesh) n++; }); return n; })(),
+    };
+  };
+  return V;
+})();
+
+// ============================================================ GIAO DIỆN
+function $(id) { return document.getElementById(id); }
+function mk(tag, text, cls) { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; }
+
+const UI = (function () {
+  const S = Core.state;
+  let valTimer = null, pendingSwitch = null;
+
+  function notice(text, buttons) {
+    const n = $("notice");
+    n.textContent = "";
+    if (!text) { n.style.display = "none"; return; }
+    n.style.display = "block";
+    n.appendChild(document.createTextNode(text));
+    if (buttons && buttons.length) {
+      const row = mk("div", undefined, "btns");
+      buttons.forEach(function (b) {
+        const btn = mk("button", b.label);
+        btn.addEventListener("click", function () { notice(null); if (b.onClick) b.onClick(); });
+        row.appendChild(btn);
+      });
+      n.appendChild(row);
+    }
+  }
+  function status(text) { $("status").textContent = text || ""; }
+
+  function scheduleValidate() {
+    if (valTimer) clearTimeout(valTimer);
+    valTimer = setTimeout(function () { valTimer = null; Core.validate(); }, 200);
+  }
+
+  function renderLayoutSelect() {
+    const sel = $("layoutSelect");
+    sel.textContent = "";
+    const names = S.layouts.slice();
+    if (names.indexOf(S.layout.name) < 0) names.unshift(S.layout.name);
+    names.forEach(function (n) {
+      const o = mk("option", n === S.layout.name && !S.layoutExists ? n + " (mới, chưa lưu)" : n); o.value = n;
+      sel.appendChild(o);
+    });
+    sel.value = S.layout.name;
+  }
+  function renderFloors() {
+    const fi = $("floorsInput");
+    if (document.activeElement !== fi) fi.value = S.layout.floors;
+    const fl = Core.layoutFloors(), sel = $("editFloor");
+    sel.textContent = "";
+    fl.forEach(function (f) { const o = mk("option", "Tầng " + f); o.value = String(f); sel.appendChild(o); });
+    sel.value = String(S.floor);
+  }
+  function renderList() {
+    const box = $("oduList");
+    box.textContent = "";
+    const bad = {};
+    S.problems.forEach(function (p) { if (p.level === "error" && p.odu_id) bad[p.odu_id] = true; });
+    if (!S.layout.odus.length) box.appendChild(mk("div", "(chưa có dàn nóng nào, bấm Thêm)"));
+    S.layout.odus.forEach(function (o) {
+      const d = mk("div", o.id + "   x=" + o.x.toFixed(2) + "  y=" + o.y.toFixed(2) + "  xoay " + rd(o.rotation_deg, 2).toFixed(2) + "°");
+      if (S.selected === o.id) d.classList.add("sel");
+      if (bad[o.id]) d.classList.add("bad");
+      d.addEventListener("click", function () { Core.select(o.id); });
+      box.appendChild(d);
+    });
+  }
+  function renderFields() {
+    const o = S.selected ? Core.find(S.selected) : null;
+    ["fX", "fY", "fRot", "fFront"].forEach(function (id) { $(id).disabled = !o; });
+    ["btnDup", "btnDel", "btnRotM90", "btnRotM15", "btnRotP15", "btnRotP90"].forEach(function (id) { $(id).disabled = !o; });
+    if (!o) { ["fX", "fY", "fRot", "fFront"].forEach(function (id) { $(id).value = ""; }); $("oduInfo").textContent = ""; return; }
+    const set = function (id, v) { if (document.activeElement !== $(id)) $(id).value = String(v); };
+    set("fX", rd(o.x, 4)); set("fY", rd(o.y, 4)); set("fRot", rd(o.rotation_deg, 4)); set("fFront", frontAngle(o.rotation_deg));
+    const sz = Core.oduSize(o);
+    $("oduInfo").textContent = sz[0] + " x " + sz[1] + " x " + Core.oduHeight(o) + " m";
+  }
+  function renderProblems() {
+    const box = $("problems");
+    box.textContent = "";
+    if (S.validating && !S.problems.length) { box.appendChild(mk("div", "Đang kiểm tra...")); return; }
+    if (!S.problems.length) { box.appendChild(mk("div", "Không có vấn đề nào.", "ok")); return; }
+    S.problems.forEach(function (p) {
+      const d = mk("div", p.message, p.level === "error" ? "error" : "warning");
+      if (p.odu_id && Core.find(p.odu_id)) { d.style.cursor = "pointer"; d.addEventListener("click", function () { Core.select(p.odu_id); }); }
+      box.appendChild(d);
+    });
+  }
+  function renderBalcony() {
+    const b = S.selectedBalcony ? Core.findBalcony(S.selectedBalcony) : null;
+    $("btnToggleBal").disabled = !b;
+    $("balInfo").textContent = b
+      ? "Ban công " + b.id + ": " + b.area_m2.toFixed(1) + " m², " + (b.allowed ? "cho phép" : "KHÔNG cho phép") + " đặt dàn nóng"
+      : "Bấm vào ban công trên hình để chọn.";
+  }
+  function renderDirty() {
+    const d = $("dirty");
+    const unsaved = Core.isUnsaved();
+    d.textContent = unsaved ? "● chưa lưu" : "● đã lưu";
+    d.className = unsaved ? "unsaved" : "saved";
+    $("btnUndo").disabled = !Core.canUndo(); $("btnRedo").disabled = !Core.canRedo();
+    document.title = (unsaved ? "* " : "") + "Trình chỉnh bố trí dàn nóng - " + S.layout.name;
+  }
+  function renderAll() {
+    $("projectName").textContent = S.project;
+    renderLayoutSelect(); renderFloors(); renderList(); renderFields(); renderProblems(); renderBalcony(); renderDirty();
+    $("snapGrid").checked = S.snapGrid; $("snapAng").checked = S.snapAng;
+  }
+
+  function doSave() {
+    return Core.save(null).then(afterSave);
+  }
+  function afterSave(r) {
+    if (r.ok) {
+      const w = r.problems.filter(function (p) { return p.level === "warning"; }).length;
+      status("Đã lưu phương án '" + r.name + "'" + (w ? " (" + w + " cảnh báo)" : "") + ".");
+    } else if (r.status === 422) {
+      status("Không lưu: phương án còn lỗi hợp lệ, xem bảng Vấn đề.");
+    } else if (r.status === 409) {
+      status("Không lưu: " + r.error);
+    } else {
+      status("Không lưu được: " + r.error);
+    }
+    return r;
+  }
+  function doSaveAs() {
+    const name = $("saveAsName").value.trim();
+    if (!/^[A-Za-z0-9_.-]{1,64}$/.test(name)) {
+      notice("Tên phương án chỉ dùng chữ cái không dấu, số, '_', '.', '-' (tối đa 64 ký tự).");
+      return Promise.resolve({ ok: false });
+    }
+    return Core.save(name).then(function (r) {
+      if (!r.ok && r.status === 409) {
+        notice("Phương án '" + name + "' đã có. Ghi đè (bản cũ lưu thành .bak)?", [
+          { label: "Ghi đè", onClick: function () { Core.save(name, { overwrite: true }).then(afterSave); } },
+          { label: "Hủy" },
+        ]);
+        return r;
+      }
+      return afterSave(r);
+    });
+  }
+  function switchLayout(name) {
+    if (name === S.layout.name) return;
+    const go = function () { Core.loadLayout(name).then(function (r) { if (r.ok) { Core.validate(); View.focusFloor(); } renderAll(); }); };
+    if (Core.isUnsaved() && S.dirty) {
+      notice("Phương án '" + S.layout.name + "' có thay đổi chưa lưu.", [
+        { label: "Bỏ thay đổi và chuyển", onClick: go },
+        { label: "Ở lại", onClick: renderLayoutSelect },
+      ]);
+    } else go();
+  }
+
+  function numField(id, apply) {
+    $(id).addEventListener("change", function () {
+      const v = parseFloat($(id).value);
+      if (!S.selected || !isFinite(v)) { renderFields(); return; }
+      apply(S.selected, v);
+    });
+  }
+  function selectedOrNull() { return S.selected; }
+  function isTyping(t) { return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT"); }
+
+  function bind() {
+    $("btn3d").addEventListener("click", function () { View.setMode("3d"); });
+    $("btnPlan").addEventListener("click", function () { View.setMode("plan"); });
+    $("clipFloor").addEventListener("change", function () { View.rebuild(); });
+    $("layoutSelect").addEventListener("change", function () { switchLayout($("layoutSelect").value); });
+    $("floorsInput").addEventListener("change", function () { Core.setFloors($("floorsInput").value.trim()); });
+    $("editFloor").addEventListener("change", function () { Core.setFloor(parseInt($("editFloor").value, 10)); });
+    $("btnSave").addEventListener("click", doSave);
+    $("btnSaveAs").addEventListener("click", doSaveAs);
+    $("btnAdd").addEventListener("click", function () { Core.addOdu(null); });
+    $("btnDup").addEventListener("click", function () { if (S.selected) Core.duplicateOdu(S.selected); });
+    $("btnDel").addEventListener("click", function () { if (S.selected) Core.deleteOdu(S.selected); });
+    $("btnUndo").addEventListener("click", function () { Core.undo(); });
+    $("btnRedo").addEventListener("click", function () { Core.redo(); });
+    [["btnRotM90", -90], ["btnRotM15", -15], ["btnRotP15", 15], ["btnRotP90", 90]].forEach(function (p) {
+      $(p[0]).addEventListener("click", function () { if (S.selected) Core.rotateOdu(S.selected, p[1]); });
+    });
+    numField("fX", function (id, v) { Core.setOdu(id, { x: v }); });
+    numField("fY", function (id, v) { Core.setOdu(id, { y: v }); });
+    numField("fRot", function (id, v) { Core.setOdu(id, { rotation_deg: v }); });
+    numField("fFront", function (id, v) { Core.setOdu(id, { rotation_deg: v - 90 }); });
+    $("snapGrid").addEventListener("change", function () { Core.setOptions({ snapGrid: $("snapGrid").checked }); });
+    $("snapAng").addEventListener("change", function () { Core.setOptions({ snapAng: $("snapAng").checked }); });
+    $("btnToggleBal").addEventListener("click", function () {
+      if (S.selectedBalcony) Core.toggleBalcony(S.selectedBalcony).then(function (r) {
+        status(r.ok ? "Đã " + (r.allowed ? "cho phép" : "cấm") + " đặt dàn nóng ở ban công (lưu trong balconies.yaml)." : "Không đổi được ban công: " + r.error);
+      });
+    });
+    document.addEventListener("keydown", function (e) {
+      const ctrl = e.ctrlKey || e.metaKey, k = e.key;
+      if (ctrl && (k === "s" || k === "S")) { e.preventDefault(); doSave(); return; }
+      if (isTyping(e.target)) return;
+      if (ctrl && (k === "z" || k === "Z")) { e.preventDefault(); if (e.shiftKey) Core.redo(); else Core.undo(); return; }
+      if (ctrl && (k === "y" || k === "Y")) { e.preventDefault(); Core.redo(); return; }
+      if (ctrl || e.altKey) return;
+      if ((k === "r" || k === "R") && selectedOrNull()) { e.preventDefault(); Core.rotateOdu(S.selected, e.shiftKey ? -15 : 15); return; }
+      if (k === "Delete" && selectedOrNull()) { e.preventDefault(); Core.deleteOdu(S.selected); }
+    });
+    window.addEventListener("beforeunload", function (e) { if (S.dirty) { e.preventDefault(); e.returnValue = ""; } });
+  }
+
+  function wireCore() {
+    Core.on(function (kind) {
+      if (kind === "moving") {
+        if (S.selected) View.moveActive(S.selected);
+        renderFields(); renderList(); renderDirty(); scheduleValidate();
+        return;
+      }
+      if (kind === "validating") { if (!S.problems.length) renderProblems(); return; }
+      if (kind === "validated") { View.applyColors(); renderProblems(); renderList(); return; }
+      if (kind === "select") { View.rebuild(); renderList(); renderFields(); renderBalcony(); return; }
+      if (kind === "message") { status(S.message); return; }
+      if (kind === "floor") { View.rebuild(); View.focusFloor(); renderFloors(); return; }
+      if (kind === "options") { renderAll(); return; }
+      if (kind === "saved") { renderAll(); return; }
+      if (kind === "balconies") { View.rebuild(); renderBalcony(); return; }
+      // change / loaded
+      View.rebuild(); renderAll();
+      if (kind === "change") scheduleValidate();
+    });
+  }
+  return { bind: bind, wireCore: wireCore, renderAll: renderAll, status: status, notice: notice };
+})();
+
+// ============================================================ khởi động và tự kiểm
+function selfTest() {
+  const out = { ok: true, steps: [] };
+  const S = Core.state;
+  function step(name, data) { const o = { step: name }; Object.keys(data).forEach(function (k) { o[k] = data[k]; }); out.steps.push(o); }
+  function fin() {
+    $("selftest").textContent = JSON.stringify(out, null, 1);
+    document.title = "selftest-done";
+  }
+  const first = S.balconies.filter(function (b) { return b.allowed; })[0];
+  step("start", { layout: S.layout.name, odus: S.layout.odus.length, balconies: S.balconies.length,
+    first_balcony: first ? first.id : null, view: View.stats() });
+  let id = null;
+  return Promise.resolve().then(function () {
+    const o = EditorAPI.addOdu(first ? first.id : null);
+    id = o.id;
+    step("add", { id: id, x: o.x, y: o.y, rotation_deg: o.rotation_deg, odus: S.layout.odus.length, dirty: S.dirty });
+    EditorAPI.moveOdu(id, o.x + 0.5, o.y);
+    const m = Core.find(id);
+    step("move", { x: m.x, y: m.y, snap_grid_ok: Math.abs(m.x / 0.05 - Math.round(m.x / 0.05)) < 1e-6 });
+    EditorAPI.rotateOdu(id, 90);
+    step("rotate", { rotation_deg: Core.find(id).rotation_deg, front_deg: frontAngle(Core.find(id).rotation_deg) });
+    const u = EditorAPI.undo();
+    step("undo", { undone: u, rotation_deg: Core.find(id).rotation_deg });
+    const r = EditorAPI.redo();
+    step("redo", { redone: r, rotation_deg: Core.find(id).rotation_deg });
+    // quy ước hướng: ô "hướng thổi" = rotation_deg + 90 và mũi tên vẽ đúng chiều thổi (0 -> lên, 180 -> xuống, mặt bằng y lên)
+    const conv = { ok_view: View.ok };
+    const fFront = $("fFront");
+    Core.select(id);
+    fFront.value = "270"; fFront.dispatchEvent(new Event("change"));
+    conv.rot_after_front_270 = Core.find(id).rotation_deg;
+    conv.front_field_after = fFront.value;
+    if (View.ok) {
+      View.setMode("plan");
+      EditorAPI.setOdu(id, { rotation_deg: 0 });
+      conv.arrow_rot0 = EditorAPI.arrowScreenDirection(id);
+      EditorAPI.setOdu(id, { rotation_deg: 180 });
+      conv.arrow_rot180 = EditorAPI.arrowScreenDirection(id);
+      View.setMode("3d");
+    }
+    EditorAPI.setOdu(id, { rotation_deg: 150.00000000504428, x: 7.123456789 });
+    conv.list_text = $("oduList").textContent;
+    conv.rot_field_precise = $("fRot").value;
+    EditorAPI.setOdu(id, { rotation_deg: 90, x: 7.5 }); // trả về như sau bước redo
+    step("front_convention", conv);
+    View.setMode("plan"); const planStats = View.stats(); View.setMode("3d");
+    step("modes", { plan: planStats, d3: View.stats() });
+    // kéo bằng sự kiện con trỏ tổng hợp ở chế độ mặt bằng (không phải chuột thật)
+    if (View.ok) {
+      View.setMode("plan");
+      const od = Core.find(id), S2 = Core.state;
+      const z = (Core.activeFloor(od) - 1) * S2.floorHeight + S2.slab + 0.5;
+      const p0 = View.screenPos(od.x, od.y, z), x0 = od.x;
+      View.synth("pointerdown", p0.x, p0.y);
+      View.synth("pointermove", p0.x - 12, p0.y);
+      View.synth("pointerup", p0.x - 12, p0.y);
+      step("drag_synthetic", { view: View.stats(), p0: p0, x_before: x0, x_after: Core.find(id).x, selected: S2.selected, undoable: Core.canUndo() });
+      // bấm vào ban công trống (B01) để chọn ban công
+      const pb = View.screenPos(5.4, 1.8, S2.slab + (S2.floor - 1) * S2.floorHeight + 0.02);
+      View.synth("pointerdown", pb.x, pb.y); View.synth("pointerup", pb.x, pb.y);
+      step("click_balcony_synthetic", { selected_balcony: S2.selectedBalcony, selected: S2.selected });
+      View.setMode("3d");
+    }
+    return EditorAPI.validate();
+  }).then(function (v) {
+    step("validate", { problems: v.problems.length, errors: v.problems.filter(function (p) { return p.level === "error"; }).length,
+      messages: v.problems.map(function (p) { return p.message; }), sizes: v.sizes });
+    return EditorAPI.toggleBalcony(first.id);
+  }).then(function (t1) {
+    const off = !Core.findBalcony(first.id).allowed;
+    return EditorAPI.toggleBalcony(first.id).then(function (t2) {
+      step("toggle_balcony", { ok1: t1.ok, denied_after_first: off, ok2: t2.ok, allowed_after_second: Core.findBalcony(first.id).allowed });
+      return EditorAPI.save("selftest", { overwrite: true });
+    });
+  }).then(function (r) {
+    step("save", { ok: r.ok, status: r.status, name: r.name, error: r.error || null, problems: (r.problems || []).length });
+    const o = Core.find(id);
+    step("final", { id: id, x: o ? o.x : null, y: o ? o.y : null, rotation_deg: o ? o.rotation_deg : null, dirty: S.dirty });
+  }).catch(function (e) { out.ok = false; out.error = String(e && e.stack || e); }).then(fin);
+}
+
+function boot() {
+  UI.bind(); UI.wireCore();
+  const viewOk = View.init($("viewport"));
+  return Core.loadState().then(function () {
+    if (viewOk) { View.fit(); }
+    const fl = parseInt(PARAMS.get("floor") || "", 10);
+    if (isFinite(fl) && Core.layoutFloors().indexOf(fl) >= 0) Core.setFloor(fl);
+    if (viewOk) {
+      return View.loadGlb().then(function () {
+        if (PARAMS.get("mode") === "plan") View.setMode("plan"); else View.focusFloor();
+        View.rebuild();
+      });
+    }
+  }).then(function () {
+    UI.renderAll();
+    return Core.validate();
+  }).then(function () {
+    const sel = PARAMS.get("sel");
+    if (sel && Core.find(sel)) Core.select(sel);
+    const bs = PARAMS.get("bal");
+    if (bs && Core.findBalcony(bs)) Core.selectBalcony(bs);
+    document.body.setAttribute("data-ready", "1");
+    if (PARAMS.get("selftest") === "1") return selfTest();
+  }).catch(function (e) {
+    UI.status("Lỗi khởi động: " + e);
+    if (PARAMS.get("selftest") === "1") {
+      $("selftest").textContent = JSON.stringify({ ok: false, error: String(e) });
+      document.title = "selftest-done";
+    }
+  });
+}
+boot();
+})();
+</script>
+</body>
+</html>

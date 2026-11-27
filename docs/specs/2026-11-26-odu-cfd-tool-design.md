@@ -72,8 +72,8 @@ Lỗi ở một giai đoạn dừng pipeline và báo nguyên nhân, không đ�
 | Thư viện ODU của hãng | kích thước, lưu lượng, công suất, ngưỡng hút |
 
 Nhận diện ban công/ODU bằng heuristic có **bước xác nhận của người dùng** (ảnh phủ lên bản vẽ); không dùng
-tọa độ loại trừ gõ cứng trong code. DWG chuyển qua DXF bằng công cụ có sẵn trên máy (FreeCAD/ODA nếu có);
-nếu không chuyển được thì yêu cầu người dùng xuất DXF và báo rõ.
+tọa độ loại trừ gõ cứng trong code. DWG chuyển qua DXF tự động bằng LibreDWG (`dwg2dxf`, đã thử thật);
+nếu không chuyển được thì yêu cầu người dùng xuất DXF và báo rõ. Chi tiết: `2026-11-26-stage2-ingest-geometry-design.md`.
 
 ## 6. Mô hình vật lý
 

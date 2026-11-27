@@ -46,6 +46,26 @@ class ComputeConfig:
     confidence: str
 
 
+GEOMETRY_MAX = {
+    "slab_thickness_m": 1.0,
+    "rail_height_m": 3.0,
+    "rail_thickness_m": 0.5,
+    "odu_default_height_m": 5.0,
+    "odu_default_width_m": 5.0,
+    "odu_default_depth_m": 5.0,
+}
+
+
+@dataclass(frozen=True)
+class GeometryConfig:
+    slab_thickness_m: float = 0.15
+    rail_height_m: float = 1.1
+    rail_thickness_m: float = 0.05
+    odu_default_height_m: float = 1.0
+    odu_default_width_m: float = 1.0
+    odu_default_depth_m: float = 0.4
+
+
 @dataclass(frozen=True)
 class Project:
     name: str
@@ -54,6 +74,7 @@ class Project:
     building: BuildingConfig
     odu: OduConfig
     compute: ComputeConfig
+    geometry: GeometryConfig = GeometryConfig()
 
 
 def _get(d, key, where):
@@ -119,6 +140,22 @@ def _text(d, key, where):
     return v
 
 
+def _parse_geometry(data) -> GeometryConfig:
+    geo = data.get("geometry") if isinstance(data, dict) else None
+    if geo is None:
+        return GeometryConfig()
+    if not isinstance(geo, dict):
+        raise ConfigError("'geometry' phải là một nhóm khai báo")
+    defaults = GeometryConfig()
+    values = {}
+    for key, upper in GEOMETRY_MAX.items():
+        if key in geo:
+            values[key] = _num(geo, key, "geometry", min_=0, max_=upper, min_exclusive=True)
+        else:
+            values[key] = getattr(defaults, key)
+    return GeometryConfig(**values)
+
+
 def parse_project(data) -> Project:
     proj = _section(data, "project", "")
     climate = _section(data, "climate", "")
@@ -160,6 +197,7 @@ def parse_project(data) -> Project:
             cores=_num(compute, "cores", "compute", min_=1, integer=True),
             confidence=_choice(compute, "confidence", "compute", CONFIDENCE_LEVELS),
         ),
+        geometry=_parse_geometry(data),
     )
 
 
